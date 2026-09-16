@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAD & 3D Modeling Portfolio</title>
+  
+  <!-- 3D 렌더링을 위한 Three.js 라이브러리 (CDN) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --accent-color: #38bdf8;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --border-color: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); line-height: 1.6; padding-bottom: 50px; }
+    
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+    header { text-align: center; padding: 50px 0 30px; border-bottom: 1px solid var(--border-color); position: relative; }
+    header h1 { font-size: 2.2rem; color: var(--accent-color); letter-spacing: 1px; }
+    header p { color: var(--text-sub); margin-top: 8px; }
+
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin: 30px 0 20px; }
+    .admin-controls { display: flex; gap: 10px; align-items: center; }
+    
+    /* 버튼 스타일 */
+    .btn { padding: 8px 16px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; text-decoration: none; display: inline-block; font-size: 0.9rem; }
+    .btn-primary { background: var(--accent-color); color: #0f172a; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary { background: #475569; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-outline { border: 1px solid var(--accent-color); color: var(--accent-color); background: transparent; }
+    .btn-outline:hover { background: var(--accent-color); color: #0f172a; }
+
+    /* 관리자 전용 요소 숨김 클래스 */
+    .admin-only { display: none !important; }
+    .is-admin .admin-only { display: inline-block !important; }
+    .is-admin div.admin-only { display: block !important; }
+    .is-admin flex.admin-only { display: flex !important; }
+
+    /* 카드 그리드 레이아웃 */
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px; }
+    .card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color); overflow: hidden; display: flex; flex-direction: column; }
+    
+    /* 3D 뷰어 캔버스 영역 */
+    .viewer-container { width: 100%; height: 250px; background: #000; position: relative; }
+    .viewer-container canvas { width: 100% !important; height: 100% !important; }
+    .viewer-hint { position: absolute; bottom: 8px; right: 12px; font-size: 0.75rem; color: rgba(255,255,255,0.5); pointer-events: none; }
+
+    .card-body { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+    .card-title { font-size: 1.25rem; margin-bottom: 8px; }
+    .card-desc { color: var(--text-sub); font-size: 0.95rem; margin-bottom: 15px; flex: 1; white-space: pre-wrap; }
+    .card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+    .tag { background: #0284c722; color: var(--accent-color); font-size: 0.8rem; padding: 3px 8px; border-radius: 4px; border: 1px solid #0284c744; }
+
+    .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* 모달 (작성/수정/로그인 창) */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; }
+    .modal-content { background: var(--card-bg); padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; border: 1px solid var(--border-color); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .close-btn { font-size: 24px; cursor: pointer; color: var(--text-sub); }
+
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-sub); }
+    .form-group input, .form-group textarea { width: 100%; padding: 10px; background: #0f172a; border: 1px solid var(--border-color); color: white; border-radius: 6px; }
+    .form-group input[type="file"] { padding: 6px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container">
+      <h1>3D CAD & ENGINEERING PORTFOLIO</h1>
+      <p>설계 도면 및 3D 모델링 포트폴리오 게시판</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="top-bar">
+      <h2>등록된 프로젝트</h2>
+      <div class="admin-controls">
+        <!-- 로그인 안 되어있을 때 표시 -->
+        <button id="loginBtn" class="btn btn-secondary" onclick="openLoginModal()">🔒 관리자 로그인</button>
+        <!-- 관리자로 로그인 되어있을 때 표시 -->
+        <button id="logoutBtn" class="btn btn-secondary admin-only" onclick="logoutAdmin()">🔓 로그아웃</button>
+        <button class="btn btn-primary admin-only" onclick="openProjectModal()">+ 프로젝트 등록</button>
+      </div>
+    </div>
+
+    <div class="card-grid" id="projectGrid">
+      <!-- 게시물 카드가 동적으로 생성됩니다 -->
+    </div>
+  </main>
+
+  <!-- 관리자 로그인 모달 -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>관리자 인증</h3>
+        <span class="close-btn" onclick="closeModal('loginModal')">&times;</span>
+      </div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>비밀번호</label>
+          <input type="password" id="adminPasswordInput" required placeholder="비밀번호를 입력하세요">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">로그인</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 프로젝트 등록/수정 모달 -->
+  <div id="projectModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">새 프로젝트 게시</h3>
+        <span class="close-btn" onclick="closeModal('projectModal')">&times;</span>
+      </div>
+      <form id="projectForm">
+        <input type="hidden" id="editId">
+        <div class="form-group">
+          <label>프로젝트 제목</label>
+          <input type="text" id="titleInput" required placeholder="예: 자력 부상 젓가락 설계">
+        </div>
+        <div class="form-group">
+          <label>설명</label>
+          <textarea id="descInput" rows="4" required placeholder="작품 개요 및 설계 특징을 입력하세요."></textarea>
+        </div>
+        <div class="form-group">
+          <label>태그 (쉼표로 구분)</label>
+          <input type="text" id="tagInput" placeholder="Inventor, STL, DWG">
+        </div>
+        <div class="form-group">
+          <label>3D 모델 파일 (.stl) - 웹 뷰어용</label>
+          <input type="file" id="modelFileInput" accept=".stl">
+        </div>
+        <div class="form-group">
+          <label>다운로드용 첨부파일 (.zip, .ipt, .dwg 등)</label>
+          <input type="file" id="attachFileInput">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">저장하기</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. 관리자 비밀번호 및 세션 설정
+    // ==========================================
+    const ADMIN_PASSWORD = "qkdfkdwk@0103"; // 원하는 관리자 비밀번호로 수정 가능
+    const STORAGE_KEY = 'portfolio_projects';
+    const SESSION_KEY = 'is_admin_logged_in';
+
+    function isAdminLoggedIn() {
+      return sessionStorage.getItem(SESSION_KEY) === 'true';
+    }
+
+    function updateAdminUI() {
+      if (isAdminLoggedIn()) {
+        document.body.classList.add('is-admin');
+        document.getElementById('loginBtn').style.display = 'none';
+      } else {
+        document.body.classList.remove('is-admin');
+        document.getElementById('loginBtn').style.display = 'inline-block';
+      }
+    }
+
+    // ==========================================
+    // 2. 데이터 관리 함수
+    // ==========================================
+    const initialProjects = [
+      {
+        id: 1,
+        title: "무동력 테이프 디스펜서 설계",
+        desc: "래크 기어와 래칫 메커니즘을 적용한 전력 비소모형 커팅 디스펜서 3D 설계입니다.",
+        tags: ["Autodesk Inventor", "Mechanism", "IPT"],
+        modelData: null,
+        fileName: "tape_dispenser_v1.zip",
+        fileData: null
+      }
+    ];
+
+    function getProjects() {
+      const data = localStorage.getItem(STORAGE_KEY);
+      return data ? JSON.parse(data) : initialProjects;
+    }
+
+    function saveProjects(projects) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    }
+
+    // ==========================================
+    // 3. 카드 그리드 렌더링
+    // ==========================================
+    function renderProjects() {
+      const grid = document.getElementById('projectGrid');
+      grid.innerHTML = '';
+      const projects = getProjects();
+      const admin = isAdminLoggedIn();
+
+      projects.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        
+        const tagsHtml = p.tags ? p.tags.map(t => `<span class="tag">${t.trim()}</span>`).join('') : '';
+        
+        card.innerHTML = `
+          <div class="viewer-container" id="viewer-${p.id}">
+            <span class="viewer-hint">🖱️ 마우스로 3D 회전 / 확대</span>
+          </div>
+          <div class="card-body">
+            <h3 class="card-title">${p.title}</h3>
+            <p class="card-desc">${p.desc}</p>
+            <div class="card-tags">${tagsHtml}</div>
+            <div class="card-actions">
+              ${p.fileData ? `<a href="${p.fileData}" download="${p.fileName}" class="btn btn-outline">다운로드</a>` : `<button class="btn btn-outline" disabled style="opacity:0.5">파일 없음</button>`}
+              ${admin ? `
+                <button class="btn btn-secondary" onclick="editProject(${p.id})">수정</button>
+                <button class="btn btn-danger" onclick="deleteProject(${p.id})">삭제</button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+
+        // 3D 뷰어 초기화
+        init3DViewer(`viewer-${p.id}`, p.modelData);
+      });
+    }
+
+    // ==========================================
+    // 4. Three.js 3D 뷰어
+    // ==========================================
+    function init3DViewer(containerId, base64Model) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1e293b);
+
+      const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+      camera.position.set(0, 0, 100);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(width, height);
+      container.appendChild(renderer.domElement);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(10, 20, 15);
+      scene.add(dirLight);
+
+      if (base64Model) {
+        const loader = new THREE.STLLoader();
+        try {
+          const geometry = loader.parse(base64ToArrayBuffer(base64Model));
+          const material = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.2, roughness: 0.5 });
+          const mesh = new THREE.Mesh(geometry, material);
+          geometry.center();
+          scene.add(mesh);
+        } catch (e) {
+          console.error("3D 로드 실패:", e);
+        }
+      } else {
+        const geometry = new THREE.BoxGeometry(30, 30, 30);
+        const material = new THREE.MeshStandardMaterial({ color: 0x334155, wireframe: true });
+        const cube = new THREE.Mesh(geometry, material);
+        scene.add(cube);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+
+    // 파일 변환 보조 함수
+    const fileToBase64 = file => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+
+    function base64ToArrayBuffer(base64) {
+      const binaryString = window.atob(base64.split(',')[1]);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    // ==========================================
+    // 5. 모달 및 로그인 제어
+    // ==========================================
+    function openLoginModal() {
+      document.getElementById('loginModal').style.display = 'flex';
+    }
+
+    function openProjectModal() {
+      if (!isAdminLoggedIn()) {
+        alert('관리자 권한이 필요합니다.');
+        return;
+      }
+      document.getElementById('editId').value = '';
+      document.getElementById('projectForm').reset();
+      document.getElementById('modalTitle').innerText = '새 프로젝트 게시';
+      document.getElementById('projectModal').style.display = 'flex';
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).style.display = 'none';
+    }
+
+    // 로그인 제출
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const pwd = document.getElementById('adminPasswordInput').value;
+      if (pwd === ADMIN_PASSWORD) {
+        sessionStorage.setItem(SESSION_KEY, 'true');
+        alert('관리자로 로그인되었습니다.');
+        closeModal('loginModal');
+        document.getElementById('adminPasswordInput').value = '';
+        updateAdminUI();
+        renderProjects();
+      } else {
+        alert('비밀번호가 일치하지 않습니다.');
+      }
+    });
+
+    // 로그아웃
+    function logoutAdmin() {
+      sessionStorage.removeItem(SESSION_KEY);
+      alert('로그아웃되었습니다.');
+      updateAdminUI();
+      renderProjects();
+    }
+
+    // 프로젝트 삭제 (관리자)
+    function deleteProject(id) {
+      if (!isAdminLoggedIn()) return;
+      if (confirm('정말 삭제하시겠습니까?')) {
+        let projects = getProjects();
+        projects = projects.filter(p => p.id !== id);
+        saveProjects(projects);
+        renderProjects();
+      }
+    }
+
+    // 프로젝트 수정 불러오기 (관리자)
+    function editProject(id) {
+      if (!isAdminLoggedIn()) return;
+      const projects = getProjects();
+      const p = projects.find(item => item.id === id);
+      if (!p) return;
+
+      document.getElementById('editId').value = p.id;
+      document.getElementById('titleInput').value = p.title;
+      document.getElementById('descInput').value = p.desc;
+      document.getElementById('tagInput').value = p.tags ? p.tags.join(', ') : '';
+      
+      document.getElementById('modalTitle').innerText = '프로젝트 수정';
+      document.getElementById('projectModal').style.display = 'flex';
+    }
+
+    // 프로젝트 등록/수정 저장 (관리자)
+    document.getElementById('projectForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      if (!isAdminLoggedIn()) {
+        alert('권한이 없습니다.');
+        return;
+      }
+
+      const editId = document.getElementById('editId').value;
+      const title = document.getElementById('titleInput').value;
+      const desc = document.getElementById('descInput').value;
+      const tags = document.getElementById('tagInput').value.split(',').map(t => t.trim()).filter(t => t);
+      
+      const modelFile = document.getElementById('modelFileInput').files[0];
+      const attachFile = document.getElementById('attachFileInput').files[0];
+
+      let projects = getProjects();
+
+      let modelData = null;
+      if (modelFile) {
+        modelData = await fileToBase64(modelFile);
+      }
+
+      let fileData = null;
+      let fileName = '';
+      if (attachFile) {
+        fileData = await fileToBase64(attachFile);
+        fileName = attachFile.name;
+      }
+
+      if (editId) {
+        projects = projects.map(p => {
+          if (p.id == editId) {
+            return {
+              ...p,
+              title,
+              desc,
+              tags,
+              modelData: modelData || p.modelData,
+              fileData: fileData || p.fileData,
+              fileName: fileName || p.fileName
+            };
+          }
+          return p;
+        });
+      } else {
+        const newProject = {
+          id: Date.now(),
+          title,
+          desc,
+          tags,
+          modelData,
+          fileData,
+          fileName
+        };
+        projects.unshift(newProject);
+      }
+
+      saveProjects(projects);
+      closeModal('projectModal');
+      renderProjects();
+    });
+
+    // 초기 실행
+    updateAdminUI();
+    renderProjects();
+  </script>
+</body>
+</html>
